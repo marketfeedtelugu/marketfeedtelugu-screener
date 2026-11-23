@@ -1,0 +1,20 @@
+{
+  "name": "hourly_trend_pullback",
+  "title": "Hourly pullback inside a daily uptrend",
+  "author": "example",
+  "description": "Daily trend up (above the 50 DMA); on the 1-hour chart RSI dips under 40 and turns back up above the 20 EMA.",
+  "universe": "nifty50",
+  "timeframe": "1h",
+  "capital": {"capital": 150000, "risk_per_trade_pct": 1.0, "max_positions": 3, "max_open_risk_pct": 3.0,
+              "max_position_pct": 33.0, "max_per_sector": 1, "product": "delivery"},
+  "filters": {"preset": "custom", "rules": ["close > sma(50)", "sma(50) > sma(200)"]},
+  "entry": {
+    "when": ["any(rsi(14) < 40, 5)", "close crosses above ema(20)", "time <= 1415"],
+    "order": "buy_stop",
+    "price": "high * 1.001",
+    "valid_bars": 2
+  },
+  "stop": "lowest(10) * 0.997",
+  "target": {"r": 2},
+  "exit": {"time_bars": 35}
+}

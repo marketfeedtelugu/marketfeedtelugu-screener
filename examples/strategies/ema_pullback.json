@@ -1,0 +1,21 @@
+{
+  "name": "ema_pullback",
+  "title": "Pullback to a rising 20 EMA",
+  "author": "example",
+  "description": "Uptrend stock dips to its rising 20 EMA, then closes back above the prior bar's high. Own filters, no market funnel.",
+  "universe": "nifty100",
+  "timeframe": "1d",
+  "capital": {"capital": 200000, "risk_per_trade_pct": 1.0, "max_positions": 4, "max_open_risk_pct": 4.0,
+              "max_position_pct": 25.0, "max_per_sector": 2, "product": "delivery"},
+  "filters": {"preset": "custom", "min_traded_value_cr": 20, "rules": ["close > sma(200)"]},
+  "entry": {
+    "when": ["close > sma(50) > sma(200)", "rising(ema(20), 5)", "any(low <= ema(20) * 1.005, 3)",
+             "green", "close > high[1]"],
+    "order": "buy_stop",
+    "price": "high + 0.05",
+    "valid_bars": 2
+  },
+  "stop": "min(lowest(5), entry - atr(14)) - 0.05",
+  "target": null,
+  "exit": {"exit_when": "close < ema(20)", "time_bars": 25}
+}

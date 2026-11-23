@@ -1,0 +1,41 @@
+{
+  "name": "orb_15m_intraday",
+  "title": "15-minute opening range breakout (intraday)",
+  "author": "example",
+  "description": "First 15 minutes' high taken out before 10:45 on 1.5x volume, above VWAP, in a stock above its 20-day average. Flat by 15:15.",
+  "universe": "fno",
+  "timeframe": "15m",
+  "capital": {
+    "capital": 100000,
+    "risk_per_trade_pct": 0.5,
+    "max_positions": 3,
+    "max_open_risk_pct": 1.5,
+    "max_position_pct": 50.0,
+    "max_per_sector": 2,
+    "product": "intraday"
+  },
+  "filters": {
+    "preset": "custom",
+    "min_traded_value_cr": 50,
+    "rules": [
+      "close > ema(20)"
+    ]
+  },
+  "entry": {
+    "when": [
+      "time <= 1045",
+      "close > orh(15)",
+      "close[1] <= orh(15)",
+      "close > vwap",
+      "volume > 1.5 * avg_volume(20)"
+    ],
+    "order": "market"
+  },
+  "stop": "max(orl(15), entry * 0.99)",
+  "target": {
+    "r": 1.5
+  },
+  "exit": {
+    "flat_by": "15:15"
+  }
+}

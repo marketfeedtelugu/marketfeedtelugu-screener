@@ -1,0 +1,18 @@
+{
+  "name": "breakout_52w_weekly",
+  "title": "52-week high breakout with a weekly uptrend",
+  "author": "example",
+  "description": "Daily close at a new 52-week high on 1.5x volume, while the weekly chart is above its rising 30-week average.",
+  "universe": "midcap150",
+  "timeframe": "1d",
+  "capital": {"capital": 300000, "risk_per_trade_pct": 0.75, "max_positions": 6, "max_open_risk_pct": 4.5,
+              "max_position_pct": 20.0, "max_per_sector": 2, "product": "delivery"},
+  "filters": {"preset": "custom", "min_traded_value_cr": 5, "rules": ["weekly(close > sma(30) and rising(sma(30), 4))"]},
+  "entry": {
+    "when": ["close > highest(250)[1]", "volume > 1.5 * avg_volume(50)", "close_position > 0.6"],
+    "order": "market"
+  },
+  "stop": "entry - 2 * atr(14)",
+  "target": null,
+  "exit": {"trail_stop": "highest_close - 3 * atr(14)", "time_bars": 60}
+}

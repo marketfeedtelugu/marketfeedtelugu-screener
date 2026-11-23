@@ -1,0 +1,21 @@
+{
+  "name": "marketfeed_momentum",
+  "title": "marketfeed funnel: RSI 60 momentum",
+  "author": "marketfeed",
+  "description": "The marketfeed funnel (regime, top sectors, RS 70+, above the 200 DMA) plus an RSI(14) cross above 60 in a rising trend.",
+  "universe": "nifty500",
+  "timeframe": "1d",
+  "capital": {"capital": 100000, "risk_per_trade_pct": 1.0, "max_positions": 5, "max_open_risk_pct": 5.0,
+              "max_position_pct": 25.0, "max_per_sector": 2, "product": "delivery"},
+  "filters": {"preset": "marketfeed"},
+  "entry": {
+    "when": ["rsi(14) crosses above 60", "close > sma(50)", "sma(50) > sma(200)", "volume > avg_volume(50)"],
+    "order": "buy_stop",
+    "price": "high * 1.001",
+    "valid_bars": 2,
+    "score": "rs_rank"
+  },
+  "stop": "max(lowest(10) * 0.995, entry - 3 * atr(14))",
+  "target": {"r": 2},
+  "exit": {"time_bars": 20}
+}
