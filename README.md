@@ -28,13 +28,13 @@ Linux). Nothing else to install.
 macOS / Linux:
 
 ```bash
-git clone https://github.com/marketfeedtelugu/marketfeed-screener.git ~/.claude/skills/marketfeed-screener
+git clone https://github.com/marketfeedtelugu/marketfeedtelugu-screener.git ~/.claude/skills/marketfeed-screener
 ```
 
 Windows (PowerShell):
 
 ```powershell
-git clone https://github.com/marketfeedtelugu/marketfeed-screener.git $HOME\.claude\skills\marketfeed-screener
+git clone https://github.com/marketfeedtelugu/marketfeedtelugu-screener.git $HOME\.claude\skills\marketfeed-screener
 ```
 
 Then start Claude Code and type `/marketfeed-screener`, or say "build my screener".
