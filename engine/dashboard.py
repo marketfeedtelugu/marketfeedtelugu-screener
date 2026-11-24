@@ -90,6 +90,7 @@ padding:6px 9px;font-size:12px;display:none;white-space:nowrap;box-shadow:0 4px 
 .checks td{text-align:left;white-space:normal;vertical-align:top}.checks td:first-child{width:76px}.checks td:nth-child(2){width:120px;font-weight:600}
 .dots span{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:3px;background:var(--line)}
 .dots span.y{background:var(--up)}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}ul{padding-left:20px;margin:6px 0}li{margin:3px 0}
 pre{white-space:pre-wrap;font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--soft);padding:12px;border-radius:8px;margin:0;overflow-x:auto}
 .grid2{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:12px}
 @media (max-width:860px){.grid2{grid-template-columns:1fr}}
@@ -201,6 +202,22 @@ function sortable(tbl,rows,cols,onClick,selKey){
  tbl.querySelectorAll('th').forEach(th=>th.onclick=()=>{const i=+th.dataset.i;dir=key===i?-dir:(cols[i].l?1:-1);key=i;render()});
  render();return {set(r){rows=r;render()}}}
 
+const NW=S.news||null;
+const lnk=(u,t)=>/^https?:\/\//.test(u||'')?'<a href="'+esc(u)+'" target="_blank" rel="noopener noreferrer">'+esc(t)+'</a>':esc(t);
+function newsHtml(sym){
+ if(!NW)return '<p class="small muted" style="margin-top:10px">News not checked in this run (scan without --no-news, or run the news command).</p>';
+ const sn=(NW.stocks||{})[sym],note=(NW.notes||{})[sym];
+ if(!sn&&!note)return '<p class="small muted" style="margin-top:10px">No news fetched for this stock (only PASS / REVIEW plans are checked).</p>';
+ let h='<h3 style="margin-top:14px">News <span class="muted small">'+(NW.live?'live':'replay')+', up to '+esc(NW.until)+'</span></h3>';
+ if(note)h+='<div class="verdict small" style="margin:6px 0">Your catalyst note: '+esc(note.text)+'</div>';
+ if(sn){const lv={red:'neg',check:'',info:'muted'};
+  if(sn.flags&&sn.flags.length)h+='<ul class="small">'+sn.flags.slice(0,6).map(f=>'<li class="'+(lv[f.level]||'')+'"><b>'+esc(f.level.toUpperCase())+'</b> '+esc(f.text)+'</li>').join('')+'</ul>';
+  const fl=(sn.filings||[]).slice(0,8);
+  h+='<div class="small"><b>NSE filings, last '+NW.filing_days+' days ('+(sn.filings||[]).length+')</b>'+(fl.length?'<ul>'+fl.map(f=>'<li>'+(f.important?'<b>!</b> ':'')+esc((f.time_ist||'').slice(0,10))+' '+lnk(f.link,f.subject)+(f.tags&&f.tags.length?' <span class="muted">['+esc(f.tags.join(', '))+']</span>':'')+'</li>').join('')+'</ul>':'<p class="muted">none'+(sn.filings_ok?'':' (NSE did not answer)')+'</p>')+'</div>';
+  const hd=(sn.headlines||[]).slice(0,6);
+  h+='<div class="small"><b>Headlines, last '+NW.headline_days+' days ('+(sn.headlines||[]).length+')</b>'+(hd.length?'<ul>'+hd.map(x=>'<li>'+esc((x.time_ist||'').slice(0,10))+' '+lnk(x.link,x.title)+' <span class="muted">'+esc(x.publisher||'')+'</span></li>').join('')+'</ul>':'<p class="muted">none'+(sn.headlines_ok?'':' (feed did not answer)')+'</p>')+'</div>';
+  (sn.notes||[]).forEach(n=>h+='<p class="small muted">'+esc(n)+'</p>')}
+ return h+'<p class="small muted">Headlines are leads, not facts: open the filing or story before acting. Good news never upgrades a check.</p>'}
 const sc=$('#tab-screener');
 const reg=S.regime||{};
 let regHtml='';
@@ -218,6 +235,7 @@ sc.innerHTML=regHtml+fun+
  '<div class="grid2"><div class="card"><h3 id="ctitle">Chart</h3><div id="chart"><p class="muted small">Click a stock to see its chart.</p></div></div><div class="card"><h3>Checks</h3><div id="checks" class="small muted">The automated checks for a trade plan appear here.</div></div></div>'+
  '<div class="card"><h2>Near misses <span class="muted small">passed every filter; dots = entry rules true on the last bar</span></h2>'+
  (WL.length?'<div class="controls"><input type="search" id="q2" placeholder="Filter symbol or sector"></div><div class="wrap"><table id="t2"><thead></thead><tbody></tbody></table></div>':'<p class="muted">No stock passed the filters.</p>')+'</div>'+
+ (NW&&Object.keys(NW.sectors||{}).length?'<div class="card"><h2>Sector news <span class="muted small">last '+NW.headline_days+' days: news explains a move, price decides</span></h2>'+Object.entries(NW.sectors).map(([sec,hs])=>'<div class="small" style="margin:8px 0"><b>'+esc(sec)+'</b>'+(hs.length?'<ul>'+hs.slice(0,4).map(x=>'<li>'+esc((x.time_ist||'').slice(0,10))+' '+lnk(x.link,x.title)+' <span class="muted">'+esc(x.publisher||'')+'</span></li>').join('')+'</ul>':' <span class="muted">no headlines</span>')+'</div>').join('')+((NW.errors||[]).length?'<p class="small muted">'+NW.errors.map(esc).join('<br>')+'</p>':'')+'</div>':'')+
  (S.warnings&&S.warnings.length?'<div class="card small muted">'+S.warnings.map(w=>'&bull; '+esc(w)).join('<br>')+'</div>':'');
 const rules=(D.card&&D.card.entry&&D.card.entry.when)||[];
 function show(sym){const c=C.find(x=>x.symbol===sym)||WL.find(x=>x.symbol===sym);if(!c)return;
@@ -226,7 +244,7 @@ function show(sym){const c=C.find(x=>x.symbol===sym)||WL.find(x=>x.symbol===sym)
  if(c.checks){const sz=c.sizing||{};$('#checks').innerHTML='<div style="margin-bottom:8px"><span class="badge b-'+c.status+'">'+c.status+'</span> <span class="badge b-'+c.state+'">'+(c.state==='pending'?'order still live':'new signal')+'</span> <span class="muted">signal bar '+esc(c.signal_bar)+'</span></div>'+
   (sz.ok?'<div class="kpi" style="margin-bottom:10px"><div><b>'+sz.qty+'</b><span>shares</span></div><div><b>&#8377;'+inr(sz.position_value)+'</b><span>position</span></div><div><b>&#8377;'+inr(sz.risk_rupees)+'</b><span>at risk</span></div>'+
   (sz.net_at_target!=null?'<div><b>&#8377;'+inr(sz.net_at_target)+'</b><span>net at target</span></div>':'')+'</div>':'')+
-  '<table class="checks"><tbody>'+c.checks.map(k=>'<tr><td><span class="badge b-'+k.status+'">'+k.status+'</span></td><td>'+esc(k.check)+'</td><td>'+esc(k.detail)+'</td></tr>').join('')+'</tbody></table>'}
+  '<table class="checks"><tbody>'+c.checks.map(k=>'<tr><td><span class="badge b-'+k.status+'">'+k.status+'</span></td><td>'+esc(k.check)+'</td><td>'+esc(k.detail)+'</td></tr>').join('')+'</tbody></table>'+newsHtml(c.symbol)}
  else{$('#checks').innerHTML='<div><b>'+(c.rules_true==null?'':c.rules_true+' of '+c.rules_total)+'</b> entry rules true on the last bar:</div><ul>'+rules.map((r,i)=>'<li class="'+(c.flags&&c.flags[i]?'pos':'neg')+'">'+(c.flags&&c.flags[i]?'&#10003; ':'&#10007; ')+esc(r)+'</li>').join('')+'</ul>'}
  $('#chart').scrollIntoView({behavior:'smooth',block:'nearest'})}
 if(C.length){const cols=[

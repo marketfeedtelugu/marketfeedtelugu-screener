@@ -1,14 +1,14 @@
 ---
 name: marketfeed-screener
-description: Build-your-own stock screener for Indian stocks (NSE). Claude interviews the trader - universe (Nifty 50, Next 50, 100, 200, 500, Midcap 150, Smallcap 250, F&O stocks, sector indices or their own list), chart timeframe (5m, 15m, 1h, 2h, daily, weekly), capital and risk rules, the marketfeed funnel preset or their own filters, and their exact entry, stop, target and exit rules - and writes it all into one shareable strategy card (readable JSON rules like "rsi(14) crosses above 60", "weekly(close > sma(30))"; Python only as a fallback). Then it pulls the data (free NSE lists and Yahoo bars, Zerodha Kite history optional), screens the universe, validates and sizes every trade plan, backtests the card after Indian charges with in-sample / out-of-sample and regime splits, runs a frozen forward test (paper trades on new bars), and writes an interactive dashboard with the funnel, the trade plans and a chart per stock with entry, stop, target, resistance and past signals marked. Use when the user says "build my screener", "screen stocks with my conditions", "find stocks that match my setup", "scan Nifty 100 for X", "my entry and exit rules", "make a strategy card", "backtest my conditions", "forward test my strategy", "show me the chart with entry and stop", or types /marketfeed-screener.
+description: Build-your-own stock screener for Indian stocks (NSE). Claude interviews the trader - universe (Nifty 50, Next 50, 100, 200, 500, Midcap 150, Smallcap 250, F&O stocks, sector indices or their own list), chart timeframe (5m, 15m, 1h, 2h, daily, weekly), capital and risk rules, the marketfeed funnel preset or their own filters, and their exact entry, stop, target and exit rules - and writes it all into one shareable strategy card (readable JSON rules like "rsi(14) crosses above 60", "weekly(close > sma(30))"; Python only as a fallback). Then it pulls the data (free NSE lists, filings and Yahoo bars, Zerodha Kite history optional), screens the universe, validates and sizes every trade plan, checks NSE filings and Google News India headlines for each plan (red flags turn it to REVIEW), backtests the card after Indian charges with in-sample / out-of-sample and regime splits, runs a frozen forward test (paper trades on new bars), and writes an interactive dashboard with the funnel, the trade plans and a chart per stock with entry, stop, target, resistance and past signals marked. Use when the user says "build my screener", "screen stocks with my conditions", "find stocks that match my setup", "scan Nifty 100 for X", "my entry and exit rules", "make a strategy card", "backtest my conditions", "forward test my strategy", "show me the chart with entry and stop", "any news on my trade plans", or types /marketfeed-screener.
 ---
 
 # marketfeed screener
 
 A screener template for anyone. The **trader** brings their universe, capital, risk rules, filters and
 entry / exit conditions. This skill connects everything else: it pulls the data, screens the universe,
-marks entry, stop and target on every chart, sizes the trade from their rules, backtests the rules,
-and forward tests them on new bars.
+marks entry, stop and target on every chart, sizes the trade from their rules, checks NSE filings and
+news headlines for every trade plan, backtests the rules, and forward tests them on new bars.
 
 The goal is not to predict which stock goes up. It finds the stocks that match the trader's **own**
 rules, exactly and repeatably, and shows honestly whether those rules have worked.
@@ -32,7 +32,7 @@ Workspace: `~/marketfeed-screener` (or `$MF_SCREENER_HOME`, or `--home DIR`): `s
 | 2. Check the rules compile and fire | `card check NAME` | signal frequency, sample signals |
 | 3. Data the card needs | `data --strategy NAME` | universe list, daily bars, intraday bars, NSE lists |
 | 4. Backtest | `backtest --strategy NAME` | verdict, per-trade R, IS/OOS, regimes, years, portfolio vs Nifty 500 |
-| 5. Screen today | `scan --strategy NAME` | `runs/NAME/<bar>/dashboard.html` |
+| 5. Screen today | `scan --strategy NAME` | funnel, trade plans, News check, `runs/NAME/<bar>/dashboard.html` |
 | 6. Forward test | `forward start --strategy NAME` | frozen card; every later scan updates the paper trades |
 
 Run `status` first: it shows what exists. `universes` lists every universe, `rules` the whole rule
@@ -101,7 +101,7 @@ that never fires, or fires on more than 5% of bars, needs another look with the 
 
 `data` downloads only what the card needs: the universe list (refreshed weekly), daily bars, the Nifty
 500 list when a filter ranks against the market, sector indices for the marketfeed funnel, the card's
-intraday bars, NSE surveillance and board meetings. Yahoo sometimes returns the newest daily candle
+intraday bars, NSE surveillance and board meetings. (News is fetched by `scan`, not `data`.) Yahoo sometimes returns the newest daily candle
 without a close; `data` fills it from NSE's official end-of-day files (published around 6 PM IST).
 Check the "Last daily bar" line is the latest session.
 
@@ -131,7 +131,7 @@ python3 "SKILL_DIR/screener.py" scan --strategy NAME
 Present it **as a funnel**: universe → (regime) → (sectors) → tradable → (strength) → (their filters) →
 triggered → validated, with the count and main reasons at each layer. Then each trade plan: PASS /
 REVIEW / REJECT checks (stop vs ATR, reward:risk, room to resistance, extension, results dates,
-portfolio limits, gap rule), the order, entry, stop, target, and the sizing arithmetic (quantity, ₹
+NSE filings and headlines, portfolio limits, gap rule), the order, entry, stop, target, and the sizing arithmetic (quantity, ₹
 position, ₹ at risk, which limit capped it). "Live" plans are earlier signals whose order is still
 valid and unfilled. Near misses are stocks that passed every filter with all but one entry rule true.
 
@@ -144,11 +144,39 @@ with the risk and reward zones, and every past signal in view with its outcome),
 `explain SYMBOL --strategy NAME` answers "why didn't X show up?": the layer it stopped at, or which
 entry rules were true and false.
 
-### News and catalysts (Claude does this, the script does not)
+### News and catalysts (the script collects, Claude reads)
 
-For each PASS or REVIEW plan, search for the latest NSE announcements and news (results, orders, pledges,
-block deals, rating changes) and give one or two dated lines each, with sources. News explains a move;
-it is not a buy signal. Flag a results date inside the holding period.
+`scan` runs a news layer after validation for every PASS and REVIEW trade plan (`--no-news` skips it):
+
+- **NSE corporate announcements, last 30 days** (the company's own filings, SEBI LODR Reg. 30), tagged
+  results, board meeting, dividend/bonus/split, buyback, deal, order win, rating, management,
+  regulatory, capital, insider/SAST, risk. Routine filings (lost share certificates, newspaper copies,
+  trading window) are left out. If NSE blocks its API, NSE's public RSS of today's announcements is used.
+- **Google News India headlines, last 14 days**, minus evergreen SEO pages ("share price today",
+  "prediction for Monday", "stocks to watch in 2027"...).
+- **Headlines for each sector in play** (the top sectors and the plans' sectors).
+
+Each plan gets a **News** check:
+- **REVIEW** for a filing or headline that cuts the other way: regulatory action, default or fraud,
+  a pledge, a management exit, a rating or capital or deal filing, a block or bulk deal.
+- **REVIEW** when the feeds did not answer.
+- **PASS** otherwise.
+
+Good news never upgrades a check or adds a stock: it is a catalyst, not a buy signal. The backtest and
+forward test do not use news (old headlines cannot be replayed without bias). An `--asof` replay reads
+only news published before its last bar closed, so later news never leaks in. The dashboard shows each
+plan's flags, filings (linked to the NSE PDF) and headlines, plus the sector headlines.
+
+Claude then reads what was flagged: open the filing or story behind each REVIEW item, and give one or two
+dated lines per plan with sources. Search the web (WebSearch) only for what the feeds could not answer,
+or to explain a sector's move. Flag a results date inside the holding period. Save what you learn:
+
+```bash
+python3 "SKILL_DIR/screener.py" news --strategy NAME                 # re-check the latest scan (e.g. before the open)
+python3 "SKILL_DIR/screener.py" news --strategy NAME --note SYM "6 Nov: Q2 results beat; Nomura positive (CNBC TV18)."
+```
+
+Headlines are leads, not facts. Never present a headline as the reason to buy.
 
 ### Manual checks before any order
 

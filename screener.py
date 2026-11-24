@@ -6,7 +6,8 @@
     screener.py rules                                   the rule vocabulary (indicators, candles, helpers)
     screener.py card list | new NAME [--from EXAMPLE] | show NAME | check NAME
     screener.py data --strategy NAME [--years 5]        the bars this card needs (daily, weekly, 1h, 15m, 5m)
-    screener.py scan --strategy NAME [--asof DATE]      the screener -> runs/NAME/<date>/dashboard.html
+    screener.py scan --strategy NAME [--asof DATE]      the screener + news check -> runs/NAME/<date>/dashboard.html
+    screener.py news --strategy NAME [--note SYM "text"]   re-check NSE filings + headlines for the trade plans
     screener.py backtest --strategy NAME [--from D] [--to D] [--oos 0.3]
     screener.py forward start|status --strategy NAME [--restart]
     screener.py explain SYMBOL --strategy NAME          why a stock did or did not show up
@@ -253,9 +254,28 @@ def latest_backtest(p, name, h=None):
     return best
 
 
+def write_outputs(p, card, raw, run, d, refresh_forward=True):
+    """scan.json + dashboard.html for a run folder (also used by `news` to refresh them)."""
+    from engine import dashboard
+    D.write_json(os.path.join(d, "scan.json"), dashboard.clean(run))
+    bt = latest_backtest(p, card["name"], run.get("card_hash"))
+    fw = None
+    if os.path.exists(os.path.join(p["forward"], card["name"], "meta.json")):
+        if refresh_forward and not run.get("replay"):
+            from engine import forward as F
+            try:
+                fw = F.status(p, card["name"], log=lambda *x: None)      # refresh the paper trades with the new bars
+            except Exception as e:  # noqa: BLE001
+                print("(forward test not refreshed: %s)" % e)
+        if fw is None:
+            fw = D.read_json(os.path.join(p["forward"], card["name"], "status.json"))
+    html = os.path.join(d, "dashboard.html")
+    dashboard.write(html, run, K.plain_words(card), raw, bt, fw)
+    return html
+
+
 def cmd_scan(a, p):
     from engine.scan import run_scan
-    from engine import dashboard
     card, strat = load(p, a.strategy)
     raw = K.read_card(K.card_path(p, a.strategy))
     h = K.card_hash(raw)
@@ -264,28 +284,91 @@ def cmd_scan(a, p):
     except D.DataError as e:
         die(str(e))
     run["card_hash"] = h
+    if not a.no_news and run["candidates"]:
+        from engine.news import attach_news
+        print("Checking NSE filings and news for the trade plans (use --no-news to skip)...")
+        try:
+            attach_news(run, log=lambda *x: None)
+        except Exception as e:  # noqa: BLE001  news never blocks the scan
+            run.setdefault("warnings", []).append("News check failed: %s" % e)
     tag = run["asof"].replace(":", "").replace(" ", "-") + ("-asof" if a.asof else "")
     d = os.path.join(p["runs"], card["name"], tag)
     os.makedirs(d, exist_ok=True)
     shutil.copy(K.card_path(p, a.strategy), os.path.join(d, "card.json"))
-    D.write_json(os.path.join(d, "scan.json"), dashboard.clean(run))
-    bt = latest_backtest(p, card["name"], h)
-    fw = None
-    if os.path.exists(os.path.join(p["forward"], card["name"], "meta.json")) and not a.asof:
-        from engine import forward as F
-        try:
-            fw = F.status(p, card["name"], log=lambda *x: None)      # refresh the paper trades with the new bars
-        except Exception as e:  # noqa: BLE001
-            print("(forward test not refreshed: %s)" % e)
-            fw = D.read_json(os.path.join(p["forward"], card["name"], "status.json"))
-    html = os.path.join(d, "dashboard.html")
-    dashboard.write(html, run, K.plain_words(card), raw, bt, fw)
+    html = write_outputs(p, card, raw, run, d)
     if a.json:
         print(json.dumps({k: run[k] for k in ("asof", "layers", "regime")}, default=str)[:4000])
         return
     print_scan(run)
-    if not bt:
+    if run.get("news"):
+        print_news(run)
+    if not latest_backtest(p, card["name"], h):
         print("No backtest of this card version yet: backtest --strategy %s (its results show in the dashboard)." % card["name"])
+    print("Dashboard: %s" % html)
+
+
+def print_news(run):
+    nw = run["news"]
+    print("\nNews and catalysts (%s, up to %s): NSE filings %d days, headlines %d days"
+          % ("live" if nw["live"] else "replay", nw["until"], nw["filing_days"], nw["headline_days"]))
+    for sym, sn in nw["stocks"].items():
+        print("  %s: %d filing(s), %d headline(s)" % (sym, len(sn["filings"]), len(sn["headlines"])))
+        for f in sn["flags"][:5]:
+            print("      %-5s %s" % (f["level"].upper(), f["text"][:150]))
+        for f in [x for x in sn["filings"] if x["important"]][:4]:
+            print("      ! %s  %s  [%s]  %s" % (f["time_ist"] or "?", f["subject"][:70], ", ".join(f["tags"]), f["link"]))
+        for hd in sn["headlines"][:3]:
+            print("        %s  %s (%s)" % ((hd["time_ist"] or "?")[:10], hd["title"][:100], hd.get("publisher") or ""))
+        for n in sn["notes"]:
+            print("      note: %s" % n)
+        if nw.get("notes", {}).get(sym):
+            print("      Catalyst note: %s" % nw["notes"][sym]["text"])
+    for sec, hs in nw["sectors"].items():
+        print("  Sector %s: %d headline(s)%s" % (sec, len(hs), "; latest: " + hs[0]["title"][:90] if hs else ""))
+    for e_ in nw["errors"]:
+        print("  note: " + e_)
+    print("  Headlines are leads, not facts: open the filing or the story before acting.")
+
+
+def latest_run_dir(p, name, tag=None):
+    root = os.path.join(p["runs"], name)
+    runs = sorted(x for x in os.listdir(root) if os.path.isfile(os.path.join(root, x, "scan.json"))) \
+        if os.path.isdir(root) else []
+    if not runs:
+        die("No scan of %s yet. Run: scan --strategy %s" % (name, name))
+    if tag:
+        hits = [x for x in runs if x.startswith(tag)]
+        if not hits:
+            die("No run %s. Runs: %s" % (tag, ", ".join(runs[-8:])))
+        return os.path.join(root, hits[-1])
+    live = [x for x in runs if not x.endswith("-asof")]
+    return os.path.join(root, (live or runs)[-1])
+
+
+def cmd_news(a, p):
+    """Re-check NSE filings and headlines for the latest scan (e.g. before the open), or save a catalyst note."""
+    from engine.news import attach_news
+    card, _ = load(p, a.strategy)
+    d = latest_run_dir(p, card["name"], a.run)
+    run = D.read_json(os.path.join(d, "scan.json"))
+    raw = D.read_json(os.path.join(d, "card.json")) or K.read_card(K.card_path(p, a.strategy))
+    if a.note:
+        sym, text = a.note[0].upper(), a.note[1].strip()
+        if not any(c["symbol"] == sym for c in run["candidates"]):
+            die("%s is not a trade plan in %s" % (sym, os.path.basename(d)))
+        run.setdefault("news", {"stocks": {}, "sectors": {}, "notes": {}, "errors": [], "live": True,
+                                "until": "", "filing_days": 30, "headline_days": 14})
+        run["news"].setdefault("notes", {})[sym] = {"text": text, "written": D.now_ist().isoformat(timespec="minutes")}
+        print("Saved the catalyst note for %s." % sym)
+    else:
+        if not run["candidates"]:
+            die("No trade plans in %s, so there is no news to check." % os.path.basename(d))
+        syms = [s.strip().upper() for s in a.symbols.split(",")] if a.symbols else None
+        print("Checking NSE filings and news for %s..." % (", ".join(syms) if syms else "the PASS / REVIEW trade plans"))
+        attach_news(run, symbols=syms, log=lambda *x: None)
+    html = write_outputs(p, card, raw, run, d, refresh_forward=False)
+    if run.get("news") and not a.note:
+        print_news(run)
     print("Dashboard: %s" % html)
 
 
@@ -311,7 +394,7 @@ def print_scan(run):
                  fmt(c["entry"], 2), fmt(c["stop"], 2), fmt(c["target"], 2) if c["target"] else "exit rules",
                  ("  -> %d shares, Rs %s at risk" % (sz["qty"], fmt(sz["risk_rupees"]))) if sz.get("ok") else ""))
         for ch in c["checks"]:
-            if ch["status"] != "PASS":
+            if ch["status"] != "PASS" or ch["check"] == "News":
                 print("      %-6s %-14s %s" % (ch["status"], ch["check"], ch["detail"]))
     near = [w for w in run["watchlist"] if w.get("rules_true") and w["rules_true"] >= max(1, w["rules_total"] - 1)]
     if near:
@@ -494,6 +577,12 @@ def main(argv=None):
     x.add_argument("--strategy", required=True)
     x.add_argument("--asof")
     x.add_argument("--json", action="store_true")
+    x.add_argument("--no-news", action="store_true", help="skip the NSE filings and headlines check")
+    x = sp.add_parser("news")
+    x.add_argument("--strategy", required=True)
+    x.add_argument("--run", help="a run folder (date) of that strategy; default the latest live scan")
+    x.add_argument("--symbols", help="only these trade plans, e.g. A,B")
+    x.add_argument("--note", nargs=2, metavar=("SYMBOL", "TEXT"), help="save your own catalyst note")
     x = sp.add_parser("backtest")
     x.add_argument("--strategy", required=True)
     x.add_argument("--from")

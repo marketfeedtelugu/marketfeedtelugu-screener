@@ -475,7 +475,8 @@ def run_scan(p, card, strat, asof=None, log=print):
     if tf in ("5m", "15m"):
         warnings.append("Free Yahoo data keeps only ~60 days of %s bars." % tf)
     warnings += errors[:10]
-    return {"asof": latest, "daily_asof": panel.dates[m_ref], "generated": D.now_ist().isoformat(timespec="minutes"),
+    return {"asof": latest, "replay": bool(asof), "bar_minutes": D.TF_MINUTES.get(tf),
+            "daily_asof": panel.dates[m_ref], "generated": D.now_ist().isoformat(timespec="minutes"),
             "strategy": card["name"], "title": card["title"], "timeframe": tf,
             "universe": card["universe"]["index"], "universe_label": D.UNIVERSES[card["universe"]["index"]][1],
             "regime": regime, "sectors": sectors[:30], "top_sectors": top, "layers": layer_out,

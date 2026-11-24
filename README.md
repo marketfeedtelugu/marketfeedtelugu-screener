@@ -7,12 +7,15 @@ Bring your own rules. This Claude Code skill turns them into a working screener 
    risk, the marketfeed funnel or your own filters, and your exact entry, stop, target and exit rules.
 2. It writes one **strategy card**, a small readable file such as
    `"when": ["rsi(14) crosses above 60", "weekly(close > sma(30))"]`, that you can share.
-3. It **pulls the data** (free NSE lists and Yahoo bars; Zerodha Kite history optional), **screens**
+3. It **pulls the data** (free NSE lists, filings and Yahoo bars; Zerodha Kite history optional), **screens**
    the universe, and **sizes** each trade from your rules.
-4. It **backtests** your rules after Indian charges (in-sample vs out-of-sample, by market regime, by
+4. It **checks the news** for every trade plan: NSE filings (30 days) and India news headlines
+   (14 days). Anything that cuts the other way (regulatory action, pledges, management exits, block
+   deals) turns the plan to REVIEW, so you read it first.
+5. It **backtests** your rules after Indian charges (in-sample vs out-of-sample, by market regime, by
    year, as a portfolio against the Nifty 500).
-5. It **forward tests** them: it freezes the card and paper-trades every new signal.
-6. You get an **interactive dashboard** with a chart for every stock. Each chart shows entry, stop,
+6. It **forward tests** them: it freezes the card and paper-trades every new signal.
+7. You get an **interactive dashboard** with a chart for every stock. Each chart shows entry, stop,
    target, resistance, your moving averages and every past signal with its outcome.
 
 Education and tooling, not investment advice. It never places an order.
