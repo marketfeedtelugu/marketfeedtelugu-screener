@@ -7,6 +7,7 @@
     screener.py card list | new NAME [--from EXAMPLE] | show NAME | check NAME
     screener.py data --strategy NAME [--years 5]        the bars this card needs (daily, weekly, 1h, 15m, 5m)
     screener.py scan --strategy NAME [--asof DATE]      the screener + news check -> runs/NAME/<date>/dashboard.html
+    screener.py serve [--strategy NAME]                 serve dashboards on http://127.0.0.1 (open the printed link)
     screener.py news --strategy NAME [--note SYM "text"]   re-check NSE filings + headlines for the trade plans
     screener.py backtest --strategy NAME [--from D] [--to D] [--oos 0.3]
     screener.py forward start|status --strategy NAME [--restart]
@@ -305,6 +306,45 @@ def cmd_scan(a, p):
     if not latest_backtest(p, card["name"], h):
         print("No backtest of this card version yet: backtest --strategy %s (its results show in the dashboard)." % card["name"])
     print("Dashboard: %s" % html)
+    print("Open it in a web browser. In the Claude app, run `serve --strategy %s` and open the http link it prints;"
+          " opened straight from disk there, it shows the static version (charts, no hover or sorting)." % card["name"])
+
+
+def cmd_serve(a, p):
+    """Serve the runs folder on 127.0.0.1 so a browser opens the dashboard over http (scripts always run)."""
+    import functools
+    import http.server
+    root = p["runs"]
+    os.makedirs(root, exist_ok=True)
+    rel = None
+    if a.strategy:
+        rel = os.path.relpath(os.path.join(latest_run_dir(p, a.strategy, a.run), "dashboard.html"), root)
+
+    class Quiet(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def end_headers(self):
+            self.send_header("Cache-Control", "no-store")      # a rescan rewrites the file: always show the new one
+            super().end_headers()
+    handler = functools.partial(Quiet, directory=root)
+    port = a.port
+    for _ in range(20):
+        try:
+            srv = http.server.ThreadingHTTPServer(("127.0.0.1", port), handler)
+            break
+        except OSError:
+            port += 1                                   # taken (often by an earlier serve): try the next one
+    else:
+        die("No free port from %d to %d." % (a.port, port))
+    url = "http://127.0.0.1:%d/" % port
+    print("Serving %s (this computer only). Ctrl+C stops it." % root)
+    print("Dashboard: " + (url + rel.replace(os.sep, "/") if rel else url))
+    sys.stdout.flush()
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        pass
 
 
 def print_news(run):
@@ -370,6 +410,8 @@ def cmd_news(a, p):
     if run.get("news") and not a.note:
         print_news(run)
     print("Dashboard: %s" % html)
+    print("Open it in a web browser. In the Claude app, run `serve --strategy %s` and open the http link it prints;"
+          " opened straight from disk there, it shows the static version (charts, no hover or sorting)." % card["name"])
 
 
 def print_scan(run):
@@ -583,6 +625,10 @@ def main(argv=None):
     x.add_argument("--run", help="a run folder (date) of that strategy; default the latest live scan")
     x.add_argument("--symbols", help="only these trade plans, e.g. A,B")
     x.add_argument("--note", nargs=2, metavar=("SYMBOL", "TEXT"), help="save your own catalyst note")
+    x = sp.add_parser("serve", help="open dashboards over http://127.0.0.1 (for the Claude app's browser pane)")
+    x.add_argument("--strategy", help="print the link to this strategy's latest dashboard")
+    x.add_argument("--run", help="a run folder (date) of that strategy; default the latest live scan")
+    x.add_argument("--port", type=int, default=8791)
     x = sp.add_parser("backtest")
     x.add_argument("--strategy", required=True)
     x.add_argument("--from")

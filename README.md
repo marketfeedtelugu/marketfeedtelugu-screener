@@ -17,6 +17,8 @@ Bring your own rules. This Claude Code skill turns them into a working screener 
 6. It **forward tests** them: it freezes the card and paper-trades every new signal.
 7. You get an **interactive dashboard** with a chart for every stock. Each chart shows entry, stop,
    target, resistance, your moving averages and every past signal with its outcome.
+   Open it in any browser, or with `serve` (an `http://127.0.0.1` link) inside the Claude app. Viewers
+   that never run scripts (file previews, Quick Look) still show the funnel, every chart and the backtest.
 
 Education and tooling, not investment advice. It never places an order.
 
@@ -58,6 +60,7 @@ python3 screener.py card show my_setup                      # your rules in plai
 python3 screener.py data --strategy my_setup                # download what the card needs
 python3 screener.py backtest --strategy my_setup            # does it have an edge after costs?
 python3 screener.py scan --strategy my_setup                # today's screen -> dashboard.html
+python3 screener.py serve --strategy my_setup               # open the dashboard: prints an http://127.0.0.1 link
 python3 screener.py forward start --strategy my_setup       # paper-trade it from now on
 ```
 

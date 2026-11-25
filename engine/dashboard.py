@@ -1,4 +1,7 @@
 """The screener dashboard: one self-contained HTML file per scan (no external files, works offline).
+Everything is also written as plain HTML + SVG (engine/dashboard_static.py), so the page shows its funnel,
+charts and backtest even where scripts never run (the Claude app's file and browser panes for a file
+outside the project, Quick Look, chat previews). Where scripts run, they swap in the interactive version.
 
 Tabs: Screener (funnel, trade plans, near-misses, a chart for every stock with entry / stop / target,
 resistance, the strategy's own moving averages and every past signal with its outcome), Backtest,
@@ -8,6 +11,9 @@ Forward test, Strategy (the card in plain words).
 import html
 import json
 import math
+import re
+
+from . import dashboard_static
 
 
 def clean(x):
@@ -26,7 +32,11 @@ def write(path, scan, card_words, card_raw, backtest=None, forward=None):
                "forward": forward}
     blob = json.dumps(clean(payload), separators=(",", ":"), default=str).replace("</", "<\\/")
     title = "%s screener" % scan.get("title", "Strategy")
-    doc = TEMPLATE.replace("__TITLE__", html.escape(title)).replace("__DATA__", blob)
+    st = dashboard_static.render(clean(payload))
+    fill = {"__TITLE__": html.escape(title), "__DATA__": blob}
+    fill.update({"__STATIC_%s__" % k.upper(): v for k, v in st.items()})
+    # one pass, so text inside the data or the static HTML is never read as a placeholder
+    doc = re.sub(r"__(?:TITLE|DATA|STATIC_[A-Z0-9]+)__", lambda m: fill.get(m.group(0), m.group(0)), TEMPLATE)
     with open(path, "w") as fh:
         fh.write(doc)
     return path
@@ -96,11 +106,26 @@ pre{white-space:pre-wrap;font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,mono
 @media (max-width:860px){.grid2{grid-template-columns:1fr}}
 .hide{display:none}footer{margin-top:36px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);padding-top:12px}
 .theme{float:right;background:none;border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:4px 10px;cursor:pointer;font:inherit;font-size:12.5px}
+.tabs a{color:var(--muted);padding:9px 14px;font-weight:600;white-space:nowrap}
+h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:30px 0 4px}
+.grid-charts{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,440px),1fr));gap:0 12px}
+svg.sv{width:100%;height:auto;aspect-ratio:900/380;display:block}.sv-bg{fill:var(--panel)}.sv-grid{stroke:var(--grid);stroke-width:1}
+.sv-t,.sv-lt{font:11px -apple-system,BlinkMacSystemFont,sans-serif;fill:var(--muted)}.sv-lt{fill:var(--panel);font-weight:600}
+.sv-up{fill:var(--candle-up)}.sv-dn{fill:var(--candle-down)}.sv-wick-up{stroke:var(--candle-up);fill:none}.sv-wick-dn{stroke:var(--candle-down);fill:none}
+.sv-vol-up{fill:var(--candle-up);opacity:.35}.sv-vol-dn{fill:var(--candle-down);opacity:.35}
+.sv-ov{fill:none;stroke-width:1.5}.sv-c1{stroke:var(--c1)}.sv-c2{stroke:var(--c2)}.sv-c3{stroke:var(--c3)}.sv-c4{stroke:var(--c4)}.sv-c5{stroke:var(--c5)}
+.sv-risk{fill:var(--down);opacity:.10}.sv-reward{fill:var(--up);opacity:.10}.sv-band{fill:var(--accent);opacity:.25}
+.sv-l-ent,.sv-l-stp,.sv-l-tgt,.sv-l-res{stroke-width:1.5}.sv-l-ent{stroke:var(--accent)}.sv-l-stp{stroke:var(--down)}.sv-l-tgt{stroke:var(--up)}.sv-l-res{stroke:var(--warn)}
+.sv-f-ent{fill:var(--accent)}.sv-f-stp{fill:var(--down)}.sv-f-tgt{fill:var(--up)}.sv-f-res{fill:var(--warn)}.sv-dash{stroke-dasharray:4 3}
+.sv-sig{fill:var(--accent)}.sv-win{stroke:var(--up);stroke-width:1.5}.sv-loss{stroke:var(--down);stroke-width:1.5}.sv-wind{fill:var(--up)}.sv-lossd{fill:var(--down)}
+.sv-eq{fill:none;stroke-width:2}.eq-s{stroke:var(--accent)}.eq-b{stroke:var(--muted)}
+.lg-c1{background:var(--c1)}.lg-c2{background:var(--c2)}.lg-c3{background:var(--c3)}.lg-c4{background:var(--c4)}.lg-c5{background:var(--c5)}
+.lg-ent,.lg-eq-s{background:var(--accent)}.lg-stp{background:var(--down)}.lg-tgt{background:var(--up)}.lg-res{background:var(--warn)}.lg-eq-b{background:var(--muted)}
 </style></head><body><main>
-<header><button class="theme" id="theme">Theme</button><h1 id="h1"></h1><div class="sub" id="sub"></div></header>
-<nav class="tabs" id="tabs"></nav>
-<section id="tab-screener"></section><section id="tab-backtest" class="hide"></section>
-<section id="tab-forward" class="hide"></section><section id="tab-strategy" class="hide"></section>
+<header><button class="theme" id="theme">Theme</button><h1 id="h1">__STATIC_H1__</h1><div class="sub" id="sub">__STATIC_SUB__</div></header>
+<nav class="tabs" id="tabs">__STATIC_NAV__</nav>
+<section id="tab-screener">__STATIC_SCREENER__</section><section id="tab-backtest">__STATIC_BACKTEST__</section>
+<section id="tab-forward">__STATIC_FORWARD__</section><section id="tab-strategy">__STATIC_STRATEGY__</section>
 <footer>Education and tooling, not investment advice. "Matched the rules" is not a recommendation to buy; the decision
 and the risk are yours. Data: NSE index lists, Yahoo Finance bars (free, unofficial, can lag) or Kite imports, NSE
 surveillance and board-meeting lists. Backtests use today's index list for the past (survivorship bias) and assume
@@ -128,6 +153,9 @@ const TABS=[['screener','Screener'],['backtest','Backtest'],['forward','Forward 
 $('#tabs').innerHTML=TABS.map(([k,l],i)=>'<button data-t="'+k+'" class="'+(i?'':'on')+'">'+l+'</button>').join('');
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on',x===b));
  TABS.forEach(([k])=>$('#tab-'+k).classList.toggle('hide',k!==b.dataset.t));redraw()});
+TABS.forEach(([k],i)=>$('#tab-'+k).classList.toggle('hide',i>0));
+// each tab draws on its own: if one fails, the others still draw and the failed one keeps its static version
+const safe=(name,f)=>{try{f()}catch(err){console.error('dashboard: '+name+' tab kept its static version:',err)}};
 
 // ---------------------------------------------------------------- chart
 const charts=[];
@@ -192,6 +220,7 @@ function Chart(box,ch){
  charts.push(self);self.draw();return self}
 
 // ---------------------------------------------------------------- screener tab
+safe('screener',()=>{
 function sortable(tbl,rows,cols,onClick,selKey){
  let key=null,dir=1;const tb=tbl.querySelector('tbody');
  function render(){let r=rows.slice();if(key!=null){const c=cols[key];r.sort((a,b)=>{const va=c.v(a),vb=c.v(b);
@@ -271,6 +300,7 @@ if(WL.length){const cols=[
  const t2=sortable($('#t2'),WL,cols,show,'symbol');
  $('#q2').oninput=()=>{const q=$('#q2').value.toLowerCase();t2.set(WL.filter(x=>x.symbol.toLowerCase().includes(q)||(x.sector||'').toLowerCase().includes(q)))};
  if(!C.length)show(WL[0].symbol)}
+});
 
 // ---------------------------------------------------------------- line chart (equity)
 function LineChart(box,series){const cv=document.createElement('canvas');box.innerHTML='';box.className='chartbox';box.appendChild(cv);
@@ -286,6 +316,7 @@ function LineChart(box,series){const cv=document.createElement('canvas');box.inn
  charts.push(self);self.draw();return self}
 
 // ---------------------------------------------------------------- backtest tab
+safe('backtest',()=>{
 const B=D.backtest, bt=$('#tab-backtest');
 function srow(name,s){if(!s||!s.n)return '<tr><td class="l">'+name+'</td><td colspan="8" class="muted l">no trades</td></tr>';
  return '<tr><td class="l">'+name+'</td><td>'+s.n+'</td><td>'+num(s.win_rate,1)+'%</td><td class="pos">'+num(s.avg_win_r,2,1)+'</td><td class="neg">'+num(s.avg_loss_r,2,1)+
@@ -306,8 +337,10 @@ else{const w=B.with_funnel,a=w.all,pf=B.portfolio_funnel||{},bm=B.benchmark||{};
  '<div class="card small"><h3>How trades ended</h3>'+Object.entries(a.exit_mix||{}).map(([k,v])=>esc(k)+' '+v).join(' &middot; ')+'</div>';
  if(pf.curve&&pf.curve.length>1&&bm.curve){const c0=pf.curve[0][1],b0=bm.curve[0][1];
   LineChart($('#eq'),[{label:'Strategy (₹100 start)',color:'--accent',pts:pf.curve.map(p=>[p[0],p[1]/c0*100])},{label:'Nifty 500 (100 start)',color:'--muted',pts:bm.curve.map(p=>[p[0],p[1]/b0*100])}])}}
+});
 
 // ---------------------------------------------------------------- forward tab
+safe('forward',()=>{
 const F=D.forward, fw=$('#tab-forward');
 if(!F){fw.innerHTML='<div class="card"><h2>No forward test running</h2><p class="muted">Start one with <code>screener.py forward start --strategy '+esc(S.strategy)+'</code>. It freezes the card and paper-trades every new signal from then on, on bars nobody has seen yet.</p></div>'}
 else{const s=F.with_filters||{},ref=F.backtest_ref;
@@ -320,9 +353,12 @@ else{const s=F.with_filters||{},ref=F.backtest_ref;
  $('#fwt').innerHTML=rows.length?'<div class="wrap"><table><thead><tr><th class="l">Symbol</th><th class="l">Signal</th><th>Entry</th><th>Stop</th><th>Target</th><th class="l">Exit</th><th>Exit &#8377;</th><th class="l">How</th><th>R net</th><th class="l">Filters</th></tr></thead><tbody>'+
  rows.slice().reverse().map(t=>'<tr><td class="l"><b>'+esc(t.symbol)+'</b></td><td class="l">'+esc(t.signal_date)+'</td><td>'+inr(t.entry,2)+'</td><td>'+inr(t.stop0,2)+'</td><td>'+(t.target?inr(t.target,2):'-')+'</td><td class="l">'+(t.open?'<span class="badge b-new">open</span>':esc(t.exit_date))+'</td><td>'+inr(t.exit,2)+'</td><td class="l">'+esc(t.exit_reason)+'</td><td class="'+cls(t.r_net)+'">'+num(t.r_net,2,1)+'</td><td class="l small">'+(t.in_funnel?'passed':'<span class="muted">'+esc(t.funnel_why||'')+'</span>')+'</td></tr>').join('')+'</tbody></table></div>':'<p class="muted">No trade has filled yet'+(all?'':' that passed your filters')+'.</p>'};
  $('#fwall').onchange=ft;ft()}
+});
 
 // ---------------------------------------------------------------- strategy tab
+safe('strategy',()=>{
 $('#tab-strategy').innerHTML='<div class="card"><h2>The strategy in plain words</h2><pre>'+esc(D.card_words)+'</pre></div><div class="card"><details><summary>Strategy card (JSON, shareable)</summary><pre>'+esc(JSON.stringify(D.card,null,2))+'</pre></details></div>';
+});
 })();
 </script></body></html>
 """

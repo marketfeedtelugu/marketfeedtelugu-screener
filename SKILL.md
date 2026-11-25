@@ -34,6 +34,7 @@ Workspace: `~/marketfeed-screener` (or `$MF_SCREENER_HOME`, or `--home DIR`): `s
 | 4. Backtest | `backtest --strategy NAME` | verdict, per-trade R, IS/OOS, regimes, years, portfolio vs Nifty 500 |
 | 5. Screen today | `scan --strategy NAME` | funnel, trade plans, News check, `runs/NAME/<bar>/dashboard.html` |
 | 6. Forward test | `forward start --strategy NAME` | frozen card; every later scan updates the paper trades |
+| 7. Show the dashboard | `serve --strategy NAME` (in the background) | an `http://127.0.0.1:PORT/...` link to open |
 
 Run `status` first: it shows what exists. `universes` lists every universe, `rules` the whole rule
 vocabulary, `card list` the examples.
@@ -135,8 +136,20 @@ NSE filings and headlines, portfolio limits, gap rule), the order, entry, stop, 
 position, ₹ at risk, which limit capped it). "Live" plans are earlier signals whose order is still
 valid and unfilled. Near misses are stocks that passed every filter with all but one entry rule true.
 
-Open the dashboard for the user (`runs/NAME/<bar>/dashboard.html`; in the Claude app the file pane or a
-browser opens it). Tabs: **Screener** (funnel, sortable plans, near misses with ✓/✗ per rule, and a
+Open the dashboard for the user over http, not as a file. Start `serve` as a **background** command
+(it keeps running) and open the `Dashboard: http://127.0.0.1:PORT/...` link it prints:
+
+```bash
+python3 "SKILL_DIR/screener.py" serve --strategy NAME     # background; prints the link; port 8791 or the next free one
+```
+
+In the Claude app open that link in the browser pane (or the user's browser). **Never** open the
+`dashboard.html` path (file://) in the app's file pane or browser pane: for a file outside the project
+those show a still snapshot without running scripts. The page has a static fallback for that case
+(funnel, plans, an SVG chart per stock, backtest, all stacked on one page), but no tabs, hover, sorting
+or click-to-chart. In a terminal-only setup, `open` (macOS), `xdg-open` (Linux) or `start` (Windows) on the
+file is fine: a real browser runs the scripts. Reuse a `serve` that is already running; after a rescan
+just reload (it sends no-cache headers). Tabs: **Screener** (funnel, sortable plans, near misses with ✓/✗ per rule, and a
 chart for every stock: candles, volume, the card's moving averages, entry / stop / target / resistance
 with the risk and reward zones, and every past signal in view with its outcome), **Backtest**,
 **Forward test**, **Strategy** (plain words + the shareable card JSON). Light and dark mode, phone-sized.
